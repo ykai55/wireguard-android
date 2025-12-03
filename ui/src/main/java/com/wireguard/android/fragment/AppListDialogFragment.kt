@@ -15,6 +15,7 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.os.bundleOf
+import androidx.core.widget.addTextChangedListener
 import androidx.databinding.Observable
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.setFragmentResult
@@ -33,6 +34,7 @@ import kotlinx.coroutines.withContext
 
 class AppListDialogFragment : DialogFragment() {
     private val appData = ObservableKeyedArrayList<String, ApplicationData>()
+    private val allAppData = mutableListOf<ApplicationData>()
     private var currentlySelectedApps = emptyList<String>()
     private var initiallyExcluded = false
     private var button: Button? = null
@@ -62,8 +64,10 @@ class AppListDialogFragment : DialogFragment() {
                 }
                 applicationData.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 withContext(Dispatchers.Main.immediate) {
+                    allAppData.clear()
+                    allAppData.addAll(applicationData)
                     appData.clear()
-                    appData.addAll(applicationData)
+                    appData.addAll(allAppData)
                     setButtonText()
                 }
             } catch (e: Throwable) {
@@ -93,7 +97,7 @@ class AppListDialogFragment : DialogFragment() {
     }
 
     private fun setButtonText() {
-        val numSelected = appData.count { it.isSelected }
+        val numSelected = allAppData.count { it.isSelected }
         button?.text = if (numSelected == 0)
             getString(R.string.use_all_applications)
         else when (tabs?.selectedTabPosition) {
@@ -122,14 +126,17 @@ class AppListDialogFragment : DialogFragment() {
         alertDialogBuilder.setNeutralButton(R.string.toggle_all) { _, _ -> }
         binding.fragment = this
         binding.appData = appData
+        binding.searchText.addTextChangedListener { text ->
+            filterAppList(text?.toString().orEmpty())
+        }
         loadData()
         val dialog = alertDialogBuilder.create()
         dialog.setOnShowListener {
             button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
             setButtonText()
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { _ ->
-                val selectAll = appData.none { it.isSelected }
-                appData.forEach {
+                val selectAll = allAppData.none { it.isSelected }
+                allAppData.forEach {
                     it.isSelected = selectAll
                 }
             }
@@ -139,7 +146,7 @@ class AppListDialogFragment : DialogFragment() {
 
     private fun setSelectionAndDismiss() {
         val selectedApps: MutableList<String> = ArrayList()
-        for (data in appData) {
+        for (data in allAppData) {
             if (data.isSelected) {
                 selectedApps.add(data.packageName)
             }
@@ -151,6 +158,20 @@ class AppListDialogFragment : DialogFragment() {
             )
         )
         dismiss()
+    }
+
+    private fun filterAppList(query: String) {
+        val q = query.trim()
+        if (q.isEmpty()) {
+            appData.clear()
+            appData.addAll(allAppData)
+            setButtonText()
+            return
+        }
+        val filtered = allAppData.filter { it.name.contains(q, true) || it.packageName.contains(q, true) }
+        appData.clear()
+        appData.addAll(filtered)
+        setButtonText()
     }
 
     companion object {
